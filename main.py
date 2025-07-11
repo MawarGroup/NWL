@@ -7,7 +7,7 @@ from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 from flask import Flask
 import threading
 
-# --- Konfigurasi ---
+# --- Config ---
 logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s', level=logging.WARNING)
 
 API_ID = 22903537
@@ -16,29 +16,15 @@ PHONE_NUMBER = '+62 817 70546513'
 SESSION_NAME = 'userbot_broadcast_session'
 DATA_FILE = 'bot_data.json'
 
-# --- Manajemen Data ---
+# --- Data ---
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {
-            "caption": "",
-            "groups": [],
-            "is_active": False,
-            "media_message_id": None,
-            "buttons": [],
-            "forward_link": None
-        }
+        return {"caption": "", "groups": [], "is_active": False, "media_message_id": None, "buttons": [], "forward_link": None}
     try:
         with open(DATA_FILE, 'r') as f:
             return json.load(f)
     except json.JSONDecodeError:
-        return {
-            "caption": "",
-            "groups": [],
-            "is_active": False,
-            "media_message_id": None,
-            "buttons": [],
-            "forward_link": None
-        }
+        return {"caption": "", "groups": [], "is_active": False, "media_message_id": None, "buttons": [], "forward_link": None}
 
 def save_data(data):
     with open(DATA_FILE, 'w') as f:
@@ -47,18 +33,13 @@ def save_data(data):
 bot_data = load_data()
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
-# --- Flask untuk uptime ---
+# --- Flask uptime ---
 app = Flask(__name__)
 @app.route('/')
-def index():
-    return "✅ Bot aktif 24 jam"
+def index(): return "✅ Bot aktif 24 jam"
+threading.Thread(target=lambda: app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080)), daemon=True).start()
 
-def run_flask():
-    app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080))
-
-threading.Thread(target=run_flask, daemon=True).start()
-
-# --- Perintah Telegram ---
+# --- Command ---
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/on$'))
 async def on_broadcast(event):
     if not bot_data['is_active']:
@@ -67,23 +48,28 @@ async def on_broadcast(event):
         await event.respond("🚀 Broadcast dimulai.")
         asyncio.create_task(broadcast_loop())
     else:
-        await event.respond("⚠️ Broadcast sudah berjalan.")
+        await event.respond("⚠️ Broadcast sudah aktif.")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/off$'))
 async def off_broadcast(event):
     bot_data['is_active'] = False
     save_data(bot_data)
-    await event.respond("⛔ Broadcast dimatikan.")
+    await event.respond("⛔ Broadcast dihentikan.")
 
-@client.on(events.NewMessage(outgoing=True, pattern=r'^/addgroup (@\w+)$'))
+@client.on(events.NewMessage(outgoing=True, pattern=r'^/addgroup(?:\s+(@\w+))+'))
 async def add_group(event):
-    group = event.pattern_match.group(1).lower()
-    if group not in bot_data['groups']:
-        bot_data['groups'].append(group)
-        save_data(bot_data)
-        await event.respond(f"✅ Grup {group} ditambahkan.")
+    groups = event.raw_text.split()[1:]
+    added = []
+    for group in groups:
+        group = group.lower()
+        if group not in bot_data['groups']:
+            bot_data['groups'].append(group)
+            added.append(group)
+    save_data(bot_data)
+    if added:
+        await event.respond(f"✅ Grup ditambahkan: {', '.join(added)}")
     else:
-        await event.respond(f"⚠️ Grup {group} sudah ada.")
+        await event.respond("⚠️ Tidak ada grup baru yang ditambahkan.")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/delgroup (@\w+)$'))
 async def del_group(event):
@@ -100,22 +86,26 @@ async def list_group(event):
     if not bot_data['groups']:
         await event.respond("📭 Belum ada grup yang terdaftar.")
     else:
-        await event.respond("\n".join(bot_data['groups']))
+        await event.respond("📌 Grup terdaftar:\n" + "\n".join(bot_data['groups']))
 
-@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption(?: (.+))?$'))
+@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption$'))
 async def set_caption(event):
-    caption = event.pattern_match.group(1)
-    if not caption:
-        await event.respond("⚠️ Harap tulis caption. Contoh:\n<code>/setcaption Halo semua!</code>", parse_mode='html')
+    reply = await event.get_reply_message()
+    if not reply or not reply.text:
+        await event.respond("⚠️ Balas perintah ini ke pesan berisi caption.")
         return
-    bot_data['caption'] = caption
+    bot_data['caption'] = reply.text
     bot_data['forward_link'] = None
     save_data(bot_data)
-    await event.respond("✅ Caption berhasil disimpan.")
+    await event.respond("✅ Caption disimpan.")
 
-@client.on(events.NewMessage(outgoing=True, pattern=r'^/setbutton (.+)$'))
+@client.on(events.NewMessage(outgoing=True, pattern=r'^/setbutton$'))
 async def set_button(event):
-    raw_buttons = event.pattern_match.group(1)
+    reply = await event.get_reply_message()
+    if not reply or not reply.text:
+        await event.respond("⚠️ Balas perintah ini ke pesan tombol format Text|URL||Text2|URL2.")
+        return
+    raw_buttons = reply.text
     new_buttons = []
     lines = raw_buttons.split("||")
     for line in lines:
@@ -124,23 +114,23 @@ async def set_button(event):
             text, url = parts
             new_buttons.append([Button.url(text.strip(), url.strip())])
         else:
-            await event.respond("⚠️ Format tombol salah. Gunakan Text|URL.")
+            await event.respond("⚠️ Format salah. Gunakan: Text|URL||Text2|URL2")
             return
     bot_data['buttons'] = new_buttons
     save_data(bot_data)
-    await event.respond("✅ Tombol berhasil disimpan.")
+    await event.respond("✅ Tombol disimpan.")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/setmedia$'))
 async def set_media(event):
     reply = await event.get_reply_message()
     if not reply or not reply.media:
-        await event.respond("⚠️ Balas perintah ini ke media (foto/video).")
+        await event.respond("⚠️ Balas perintah ini ke pesan media.")
         return
     if isinstance(reply.media, (MessageMediaPhoto, MessageMediaDocument)):
         bot_data['media_message_id'] = reply.id
         bot_data['forward_link'] = None
         save_data(bot_data)
-        await event.respond("✅ Media berhasil disimpan.")
+        await event.respond("✅ Media disimpan.")
     else:
         await event.respond("⚠️ Hanya gambar atau video yang didukung.")
 
@@ -164,20 +154,20 @@ async def status_command(event):
 async def help_command(event):
     help_text = (
         "<b>📘 Panduan Bot Broadcast Telegram</b>\n\n"
-        "<b>🔹 Perintah Utama:</b>\n"
+        "<b>🔹 Utama:</b>\n"
         "<code>/on</code> - Mulai broadcast\n"
         "<code>/off</code> - Stop broadcast\n"
-        "<code>/status</code> - Lihat status\n"
-        "<code>/help</code> - Lihat panduan\n\n"
+        "<code>/status</code>\n"
+        "<code>/help</code>\n\n"
         "<b>🔹 Grup:</b>\n"
-        "<code>/addgroup @namagrup</code>\n"
-        "<code>/delgroup @namagrup</code>\n"
+        "<code>/addgroup @g1 @g2</code>\n"
+        "<code>/delgroup @g1</code>\n"
         "<code>/listgroup</code>\n\n"
         "<b>🔹 Konten:</b>\n"
-        "<code>/setcaption Teks</code>\n"
-        "<code>/setmedia</code> (reply ke media)\n"
-        "<code>/setbutton Text|URL||Text2|URL2</code>\n"
-        "<code>/forward https://t.me/channel/123</code>"
+        "<code>/setcaption</code> (balas caption panjang)\n"
+        "<code>/setmedia</code> (balas media)\n"
+        "<code>/setbutton</code> (balas tombol Text|URL||Text2|URL2)\n"
+        "<code>/forward https://t.me/.../123</code>"
     )
     await event.respond(help_text, parse_mode='html')
 
@@ -193,22 +183,24 @@ async def broadcast_loop():
                     msg = await client.get_messages(parts[-2], ids=int(parts[-1]))
                     if msg:
                         await client.forward_messages(group, msg)
+                        await client.send_message("me", f"✅ Forward ke {group} sukses.")
                 elif bot_data['media_message_id']:
                     msg = await client.get_messages("me", ids=bot_data['media_message_id'])
                     if msg and msg.media:
                         await client.send_file(group, msg.media, caption=bot_data['caption'], buttons=bot_data['buttons'])
+                        await client.send_message("me", f"✅ Media ke {group} sukses.")
                 elif bot_data['caption']:
                     await client.send_message(group, bot_data['caption'], buttons=bot_data['buttons'])
-                await client.send_message("me", f"✅ Berhasil broadcast ke {group}")
+                    await client.send_message("me", f"✅ Teks ke {group} sukses.")
+                else:
+                    await client.send_message("me", f"⚠️ Tidak ada konten untuk {group}.")
             except Exception as e:
                 await client.send_message("me", f"❌ Gagal kirim ke {group}: {e}")
-            await asyncio.sleep(300)  # 5 menit antar grup
-
+            await asyncio.sleep(300)  # Jeda 5 menit per grup
         if bot_data['is_active']:
-            await client.send_message("me", "⏸️ Putaran selesai. Jeda 30 menit.")
-            await asyncio.sleep(1800)  # 30 menit antar putaran
+            await asyncio.sleep(1800)  # Jeda 30 menit antar putaran
 
-# --- Entry Point ---
+# --- Main ---
 async def main():
     await client.start(phone=PHONE_NUMBER)
     if bot_data['is_active']:
