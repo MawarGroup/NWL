@@ -59,7 +59,7 @@ async def periodic_checker(context: ContextTypes.DEFAULT_TYPE):
             emoji = "✅" if "aman" in status.lower() else "❌"
             report_lines.append(f"{emoji} <code>{domain}</code>: <b>{status}</b>")
 
-       full_report = "\n".join(report_lines)
+        full_report = "
 ".join(report_lines)
         await context.bot.send_message(chat_id=chat_id, text=full_report, parse_mode='HTML')
 
