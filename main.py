@@ -3,7 +3,7 @@ import json
 import os
 import logging
 from telethon import TelegramClient, events, Button
-from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument, MessageEntityBold, MessageEntityItalic, MessageEntityTextUrl
 from flask import Flask
 import threading
 
@@ -15,10 +15,12 @@ API_HASH = 'db3a26e7eef0470c61419a6f1b3a58c5'
 PHONE_NUMBER = '+62 817 70546513'
 DATA_FILE = 'bot_data.json'
 
+# --- Load & Save Data ---
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {
             "caption": "",
+            "caption_entities": [],
             "groups": [],
             "is_active": False,
             "media_message_id": None,
@@ -31,6 +33,7 @@ def load_data():
     except json.JSONDecodeError:
         return {
             "caption": "",
+            "caption_entities": [],
             "groups": [],
             "is_active": False,
             "media_message_id": None,
@@ -45,6 +48,7 @@ def save_data(data):
 bot_data = load_data()
 client = TelegramClient('userbot_broadcast_session', API_ID, API_HASH)
 
+# --- Flask App ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -56,6 +60,7 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
+# --- Commands ---
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/on$'))
 async def on_broadcast(event):
     if not bot_data['is_active']:
@@ -102,12 +107,17 @@ async def list_group(event):
     else:
         await event.respond("\n".join(bot_data['groups']))
 
-@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption (.+)$'))
+@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption'))
 async def set_caption(event):
-    bot_data['caption'] = event.pattern_match.group(1)
-    bot_data['forward_link'] = None
-    save_data(bot_data)
-    await event.respond("✅ Caption disimpan.")
+    reply = await event.get_reply_message()
+    if reply and reply.message:
+        bot_data['caption'] = reply.message
+        bot_data['caption_entities'] = [e.to_dict() for e in reply.entities or []]
+        bot_data['forward_link'] = None
+        save_data(bot_data)
+        await event.respond("✅ Caption disimpan dengan entitas.")
+    else:
+        await event.respond("⚠️ Gunakan /setcaption sebagai balasan ke teks yang ingin disimpan.")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/setbutton (.+)$'))
 async def set_button(event):
@@ -134,9 +144,11 @@ async def set_media(event):
         return
     if isinstance(reply.media, (MessageMediaPhoto, MessageMediaDocument)):
         bot_data['media_message_id'] = reply.id
+        bot_data['caption'] = reply.message or ""
+        bot_data['caption_entities'] = [e.to_dict() for e in reply.entities or []]
         bot_data['forward_link'] = None
         save_data(bot_data)
-        await event.respond("✅ Media disimpan.")
+        await event.respond("✅ Media dan caption disimpan.")
     else:
         await event.respond("⚠️ Media tidak valid.")
 
@@ -146,6 +158,7 @@ async def set_forward(event):
     bot_data['media_message_id'] = None
     bot_data['caption'] = ""
     bot_data['buttons'] = []
+    bot_data['caption_entities'] = []
     save_data(bot_data)
     await event.respond("✅ Mode forward diaktifkan.")
 
@@ -156,6 +169,7 @@ async def status_command(event):
     text = f"📡 Status: {status}\n🎯 Grup: {len(bot_data['groups'])}\n📝 Mode: {mode}"
     await event.respond(text)
 
+# --- Broadcast Loop ---
 async def broadcast_loop():
     while bot_data['is_active']:
         for group in bot_data['groups']:
@@ -170,9 +184,26 @@ async def broadcast_loop():
                 elif bot_data['media_message_id']:
                     msg = await client.get_messages("me", ids=bot_data['media_message_id'])
                     if msg and msg.media:
-                        await client.send_file(group, msg.media, caption=bot_data['caption'], buttons=bot_data['buttons'])
+                        await client.send_file(
+                            group,
+                            msg.media,
+                            caption=bot_data['caption'],
+                            buttons=bot_data['buttons'],
+                            entities=[MessageEntityBold(**e) if e['_'] == 'messageEntityBold' else
+                                      MessageEntityItalic(**e) if e['_'] == 'messageEntityItalic' else
+                                      MessageEntityTextUrl(**e) if e['_'] == 'messageEntityTextUrl' else None
+                                      for e in bot_data['caption_entities'] if e is not None]
+                        )
                 elif bot_data['caption']:
-                    await client.send_message(group, bot_data['caption'], buttons=bot_data['buttons'])
+                    await client.send_message(
+                        group,
+                        bot_data['caption'],
+                        buttons=bot_data['buttons'],
+                        entities=[MessageEntityBold(**e) if e['_'] == 'messageEntityBold' else
+                                  MessageEntityItalic(**e) if e['_'] == 'messageEntityItalic' else
+                                  MessageEntityTextUrl(**e) if e['_'] == 'messageEntityTextUrl' else None
+                                  for e in bot_data['caption_entities'] if e is not None]
+                    )
                 else:
                     await client.send_message("me", "⚠️ Tidak ada konten.")
             except Exception as e:
@@ -181,6 +212,7 @@ async def broadcast_loop():
         if bot_data['is_active']:
             await asyncio.sleep(1800)  # 30 menit antar putaran
 
+# --- Main ---
 async def main():
     await client.start(phone=PHONE_NUMBER)
     if bot_data['is_active']:
