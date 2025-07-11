@@ -104,12 +104,26 @@ async def list_group(event):
     else:
         await event.respond("\n".join(bot_data['groups']))
 
-@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption (.+)$'))
+@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption'))
 async def set_caption(event):
-    bot_data['caption'] = event.pattern_match.group(1)
-    bot_data['forward_link'] = None
-    save_data(bot_data)
-    await event.respond("✅ Caption berhasil disimpan.")
+    if event.is_reply:
+        reply = await event.get_reply_message()
+        if reply and reply.text:
+            bot_data['caption'] = reply.text
+            bot_data['forward_link'] = None
+            save_data(bot_data)
+            await event.respond("✅ Caption dari balasan berhasil disimpan.")
+        else:
+            await event.respond("⚠️ Balasan tidak berisi teks.")
+    else:
+        match = event.raw_text.split(' ', 1)
+        if len(match) > 1:
+            bot_data['caption'] = match[1]
+            bot_data['forward_link'] = None
+            save_data(bot_data)
+            await event.respond("✅ Caption berhasil disimpan.")
+        else:
+            await event.respond("⚠️ Harap kirim teks setelah /setcaption atau balas ke pesan.")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/setbutton (.+)$'))
 async def set_button(event):
@@ -172,7 +186,7 @@ async def help_command(event):
         "<code>/delgroup @namagrup</code>\n"
         "<code>/listgroup</code>\n\n"
         "<b>🔹 Konten:</b>\n"
-        "<code>/setcaption Teks</code>\n"
+        "<code>/setcaption Teks</code> (atau balas ke teks)\n"
         "<code>/setmedia</code> (reply ke media)\n"
         "<code>/setbutton Text|URL||Text2|URL2</code>\n"
         "<code>/forward https://t.me/channel/123</code>"
