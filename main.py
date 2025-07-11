@@ -104,26 +104,12 @@ async def list_group(event):
     else:
         await event.respond("\n".join(bot_data['groups']))
 
-@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption'))
+@client.on(events.NewMessage(outgoing=True, pattern=r'^/setcaption (.+)$'))
 async def set_caption(event):
-    if event.is_reply:
-        reply = await event.get_reply_message()
-        if reply and reply.text:
-            bot_data['caption'] = reply.text
-            bot_data['forward_link'] = None
-            save_data(bot_data)
-            await event.respond("✅ Caption dari balasan berhasil disimpan.")
-        else:
-            await event.respond("⚠️ Balasan tidak berisi teks.")
-    else:
-        match = event.raw_text.split(' ', 1)
-        if len(match) > 1:
-            bot_data['caption'] = match[1]
-            bot_data['forward_link'] = None
-            save_data(bot_data)
-            await event.respond("✅ Caption berhasil disimpan.")
-        else:
-            await event.respond("⚠️ Harap kirim teks setelah /setcaption atau balas ke pesan.")
+    bot_data['caption'] = event.pattern_match.group(1)
+    bot_data['forward_link'] = None
+    save_data(bot_data)
+    await event.respond("✅ Caption berhasil disimpan.")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^/setbutton (.+)$'))
 async def set_button(event):
@@ -186,7 +172,7 @@ async def help_command(event):
         "<code>/delgroup @namagrup</code>\n"
         "<code>/listgroup</code>\n\n"
         "<b>🔹 Konten:</b>\n"
-        "<code>/setcaption Teks</code> (atau balas ke teks)\n"
+        "<code>/setcaption Teks</code>\n"
         "<code>/setmedia</code> (reply ke media)\n"
         "<code>/setbutton Text|URL||Text2|URL2</code>\n"
         "<code>/forward https://t.me/channel/123</code>"
@@ -209,14 +195,22 @@ async def broadcast_loop():
                     msg = await client.get_messages("me", ids=bot_data['media_message_id'])
                     if msg and msg.media:
                         await client.send_file(group, msg.media, caption=bot_data['caption'], buttons=bot_data['buttons'])
+                    else:
+                        await client.send_message("me", f"⚠️ Media tidak ditemukan.")
+                        continue
                 elif bot_data['caption']:
                     await client.send_message(group, bot_data['caption'], buttons=bot_data['buttons'])
                 else:
                     await client.send_message("me", "⚠️ Tidak ada konten untuk broadcast.")
+                    continue
+
+                await client.send_message("me", f"✅ Sukses kirim ke {group}")
             except Exception as e:
                 await client.send_message("me", f"❌ Gagal kirim ke {group}: {e}")
-            await asyncio.sleep(600)  # 10 menit per grup
+            await asyncio.sleep(300)  # 5 menit antar grup
+
         if bot_data['is_active']:
+            await client.send_message("me", "🔁 Putaran selesai. Menunggu 30 menit...")
             await asyncio.sleep(1800)  # 30 menit antar putaran
 
 # --- Main Entry ---
