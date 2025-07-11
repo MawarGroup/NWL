@@ -59,8 +59,7 @@ async def periodic_checker(context: ContextTypes.DEFAULT_TYPE):
             emoji = "✅" if "aman" in status.lower() else "❌"
             report_lines.append(f"{emoji} <code>{domain}</code>: <b>{status}</b>")
 
-        full_report = "
-".join(report_lines)
+        full_report = "\n".join(report_lines)
         await context.bot.send_message(chat_id=chat_id, text=full_report, parse_mode='HTML')
 
     except Exception as e:
@@ -68,11 +67,8 @@ async def periodic_checker(context: ContextTypes.DEFAULT_TYPE):
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Halo! Kirimkan file .txt berisi daftar domain.
-"
-        "Saya akan memantau status Nawala domain itu setiap 60 detik.
-
-"
+        "Halo! Kirimkan file .txt berisi daftar domain.\n"
+        "Saya akan memantau status Nawala domain itu setiap 60 detik.\n\n"
         "Gunakan /stop untuk menghentikan."
     )
 
@@ -111,9 +107,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(
-            f"✅ Mulai memantau {len(domains)} domain.
-Saya akan kirim laporan tiap {CHECK_INTERVAL_SECONDS} detik.
-Gunakan /stop untuk berhenti."
+            f"✅ Mulai memantau {len(domains)} domain.\n"
+            f"Saya akan kirim laporan tiap {CHECK_INTERVAL_SECONDS} detik.\n"
+            "Gunakan /stop untuk berhenti."
         )
     except Exception as e:
         await update.message.reply_text(f"❌ Error saat memproses file: {e}")
